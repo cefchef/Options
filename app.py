@@ -163,16 +163,20 @@ col1, col2, col3 = st.columns(3)
 col4, col5 = st.columns(2)
 
 with col1:
-    greek_card_with_surface("Delta", delta_vals[index_S0], delta_vals, delta_call, "Blues", tooltips["Delta"])
-with col2:
-    greek_card_with_surface("Gamma", gamma_vals[index_S0], gamma_vals, gamma, "Greens", tooltips["Gamma"])
-with col3:
-    greek_card_with_surface("Theta", theta_vals[index_S0], theta_vals, theta_call, "Oranges", tooltips["Theta"])
-with col4:
-    greek_card_with_surface("Vega", vega_vals[index_S0], vega_vals, vega, "Purples", tooltips["Vega"])
-with col5:
-    greek_card_with_surface("Rho", rho_vals[index_S0], rho_vals, rho_call, "Reds", tooltips["Rho"])
+    greek_card_with_surface("Delta", delta_vals[index_S0], delta_vals, delta_call, "#1f77b4", tooltips["Delta"])
 
+with col2:
+    greek_card_with_surface("Gamma", gamma_vals[index_S0], gamma_vals, gamma, "#2ca02c", tooltips["Gamma"])
+
+with col3:
+    greek_card_with_surface("Theta", theta_vals[index_S0], theta_vals, theta_call, "#ff7f0e", tooltips["Theta"])
+
+with col4:
+    greek_card_with_surface("Vega", vega_vals[index_S0], vega_vals, vega, "#9467bd", tooltips["Vega"])
+
+with col5:
+    greek_card_with_surface("Rho", rho_vals[index_S0], rho_vals, rho_call, "#d62728", tooltips["Rho"])
+    
 # --- VOLATILITY SMILE ---
 st.subheader("Volatility Smile")
 
