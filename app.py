@@ -1,58 +1,53 @@
-# --- CONFIGURACIÓN INICIAL Y DARK MODE REAL ---
+# --- CONFIGURACIÓN INICIAL ---
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from scipy.stats import norm
 
-# Configuración de la página
 st.set_page_config(page_title="Greeks & Volatility Visualizer v1.2", layout="wide")
 
-# --- HEADER PRINCIPAL ---
+# --- HEADER ---
 st.title("📈 Greeks & Volatility Visualizer v1.2 – Interactive Pro Edition")
 st.caption("_by cpetto._")
 st.markdown("---")
 
-# --- GESTIÓN DE TEMAS OSCURO/CLARO DINÁMICO ---
-def set_background_color(dark_mode):
-    page_bg = "#0E1117" if dark_mode else "#FFFFFF"
-    text_color = "#FAFAFA" if dark_mode else "#000000"
-    st.markdown(
-        f"""
-        <style>
-        .stApp {{
-            background-color: {page_bg};
-            color: {text_color};
-            transition: background-color 0.5s ease, color 0.5s ease;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+# --- FUNCIÓN DE SYNC ENTRE SLIDER Y INPUT ---
+def synced_slider_input(label, key_slider, key_input, min_val, max_val, default_val, step_val):
+    if key_slider not in st.session_state:
+        st.session_state[key_slider] = default_val
+    if key_input not in st.session_state:
+        st.session_state[key_input] = default_val
 
-# Sidebar de configuraciones
-st.sidebar.header("Configuraciones de Visualización")
-dark_mode = st.sidebar.toggle('🌞 | 🌙')
-set_background_color(dark_mode)
+    def slider_change():
+        st.session_state[key_input] = st.session_state[key_slider]
 
-# --- INPUTS MANUALES + SLIDERS SINCRONIZADOS ---
+    def input_change():
+        st.session_state[key_slider] = st.session_state[key_input]
+
+    st.slider(label + " (slider)", 
+              min_val, max_val, key=key_slider, step=step_val, on_change=slider_change)
+    st.number_input(label + " (input manual)", 
+                    min_value=min_val, max_value=max_val, key=key_input, step=step_val, on_change=input_change)
+
+# --- SIDEBAR: PARÁMETROS ---
 st.sidebar.header("Parámetros de la Opción")
 
-def sync_input_slider(label, min_val, max_val, default, step):
-    slider = st.sidebar.slider(f"{label} (slider)", min_val, max_val, default, step=step)
-    number = st.sidebar.number_input(f"{label} (input manual)", min_value=min_val, max_value=max_val, value=slider, step=step)
-    if number != slider:
-        slider = number
-    return slider
-
-S0 = sync_input_slider("Precio Subyacente (S0)", 10, 500, 100, 1)
-K0 = sync_input_slider("Strike (K)", 10, 500, 100, 1)
-r0 = sync_input_slider("Tasa libre de riesgo (r)", 0.0, 0.2, 0.05, 0.001)
-sigma0 = sync_input_slider("Volatilidad (σ)", 0.05, 1.0, 0.2, 0.01)
-T0 = sync_input_slider("Tiempo hasta vencimiento (T)", 0.01, 2.0, 1.0, 0.01)
-
 option_type = st.sidebar.selectbox("Tipo de Opción", ["call", "put"])
+synced_slider_input("Tiempo hasta vencimiento (T)", "T_slider", "T_input", 0.01, 2.0, 1.0, 0.01)
+synced_slider_input("Precio Subyacente (S0)", "S0_slider", "S0_input", 10, 500, 100, 1)
+synced_slider_input("Strike (K)", "K0_slider", "K0_input", 10, 500, 100, 1)
+synced_slider_input("Tasa libre de riesgo (r)", "r0_slider", "r0_input", 0.0, 0.2, 0.05, 0.001)
+synced_slider_input("Volatilidad (σ)", "sigma0_slider", "sigma0_input", 0.05, 1.0, 0.2, 0.01)
+
 smile_view = st.sidebar.radio("Visualizar Volatility Smile:", ["2D", "3D"])
+
+# --- CAPTURAR VALORES SINCRONIZADOS ---
+T0 = st.session_state["T_input"]
+S0 = st.session_state["S0_input"]
+K0 = st.session_state["K0_input"]
+r0 = st.session_state["r0_input"]
+sigma0 = st.session_state["sigma0_input"]
 
 # --- FUNCIONES FINANCIERAS ---
 def d1(S, K, T, r, sigma):
@@ -103,79 +98,48 @@ gamma_vals = gamma(S_range, K0, T0, r0, sigma0)
 vega_vals = vega(S_range, K0, T0, r0, sigma0)
 index_S0 = np.argmin(np.abs(S_range - S0))
 
-# --- FUNCIÓN PARA CARDS CON GREEKS ---
-def greek_card_with_surface(title, current_val, data_series, surface_function, colormap, tooltip_text):
-    st.markdown(f"<h3 style='color: {'white' if dark_mode else '#222222'};'>{title} ℹ️</h3>", unsafe_allow_html=True)
-    st.caption(tooltip_text)
-
-    spark_color = {
-        "Delta": "#1f77b4",
-        "Gamma": "#2ca02c",
-        "Theta": "#ff7f0e",
-        "Vega": "#9467bd",
-        "Rho": "#d62728"
-    }
+# --- FUNCIONES PARA CARDS ---
+def greek_card(title, current_val, data_series, surface_function, color):
+    st.subheader(title)
+    st.metric(label="Valor actual", value=f"{current_val:.4f}")
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=data_series, mode='lines', line=dict(color=spark_color[title], width=2)))
+    fig.add_trace(go.Scatter(y=data_series, mode='lines', line=dict(color=color, width=2)))
     fig.update_layout(height=100, margin=dict(l=10, r=10, t=10, b=10), xaxis_visible=False, yaxis_visible=False)
     st.plotly_chart(fig, use_container_width=True)
 
+    # Superficie 3D
     S_grid, T_grid = np.meshgrid(np.linspace(0.5*S0, 1.5*S0, 40), np.linspace(0.01, 2.0, 40))
-    if option_type == "call" and title == "Delta":
-        Z = delta_call(S_grid, K0, T_grid, r0, sigma0)
-    elif option_type == "put" and title == "Delta":
-        Z = delta_put(S_grid, K0, T_grid, r0, sigma0)
-    elif option_type == "call" and title == "Theta":
-        Z = theta_call(S_grid, K0, T_grid, r0, sigma0)
-    elif option_type == "put" and title == "Theta":
-        Z = theta_put(S_grid, K0, T_grid, r0, sigma0)
-    elif option_type == "call" and title == "Rho":
-        Z = rho_call(S_grid, K0, T_grid, r0, sigma0)
-    elif option_type == "put" and title == "Rho":
-        Z = rho_put(S_grid, K0, T_grid, r0, sigma0)
-    else:
-        Z = surface_function(S_grid, K0, T_grid, r0, sigma0)
+    Z = surface_function(S_grid, K0, T_grid, r0, sigma0)
 
-    fig3d = plt.figure(figsize=(6, 4))
+    fig3d = plt.figure(figsize=(6,4))
     ax = fig3d.add_subplot(111, projection='3d')
-    ax.plot_surface(S_grid, T_grid, Z, cmap=colormap, edgecolor='none')
+    ax.plot_surface(S_grid, T_grid, Z, cmap=color, edgecolor='none')
     ax.set_xlabel('S')
     ax.set_ylabel('T')
     ax.set_zlabel(title)
     ax.set_title(f"{title} Surface")
-    if dark_mode:
-        ax.set_facecolor('#111111')
-        fig3d.patch.set_facecolor('#111111')
     st.pyplot(fig3d)
 
-# --- MOSTRAR LAS GREEKS ---
-st.markdown(f"<h2 style='color: {'white' if dark_mode else '#222222'};'>Sensibilidades (Greeks)</h2>", unsafe_allow_html=True)
-
-tooltips = {
-    "Delta": "Sensibilidad del precio de la opción al movimiento del precio del subyacente.",
-    "Gamma": "Tasa de cambio de Delta respecto al precio del subyacente.",
-    "Theta": "Sensibilidad del precio de la opción al paso del tiempo (decadencia temporal).",
-    "Vega": "Sensibilidad del precio de la opción a cambios en la volatilidad del subyacente.",
-    "Rho": "Sensibilidad del precio de la opción a cambios en la tasa libre de riesgo."
-}
+# --- MOSTRAR CARDS DE GREEKS ---
+st.header("Sensibilidades (Greeks)")
 
 col1, col2, col3 = st.columns(3)
 col4, col5 = st.columns(2)
 
 with col1:
-    greek_card_with_surface("Delta", delta_vals[index_S0], delta_vals, delta_call, "Blues", tooltips["Delta"])
+    greek_card("Delta", delta_vals[index_S0], delta_vals, delta_call, "Blues")
 with col2:
-    greek_card_with_surface("Gamma", gamma_vals[index_S0], gamma_vals, gamma, "Greens", tooltips["Gamma"])
+    greek_card("Gamma", gamma_vals[index_S0], gamma_vals, gamma, "Greens")
 with col3:
-    greek_card_with_surface("Theta", theta_vals[index_S0], theta_vals, theta_call, "Oranges", tooltips["Theta"])
+    greek_card("Theta", theta_vals[index_S0], theta_vals, theta_call, "Oranges")
 with col4:
-    greek_card_with_surface("Vega", vega_vals[index_S0], vega_vals, vega, "Purples", tooltips["Vega"])
+    greek_card("Vega", vega_vals[index_S0], vega_vals, vega, "Purples")
 with col5:
-    greek_card_with_surface("Rho", rho_vals[index_S0], rho_vals, rho_call, "Reds", tooltips["Rho"])
+    greek_card("Rho", rho_vals[index_S0], rho_vals, rho_call, "Reds")
 
 # --- VOLATILITY SMILE ---
-st.markdown(f"<h2 style='color: {'white' if dark_mode else '#222222'};'>Volatility Smile</h2>", unsafe_allow_html=True)
+st.header("Volatility Smile")
 
 strikes = np.linspace(0.8*S0, 1.2*S0, 50)
 times = np.linspace(0.01, 2.0, 50)
@@ -184,17 +148,6 @@ implied_vol_grid = sigma0 + 0.05 * ((Strike_grid - S0)/S0)**2
 
 if smile_view == "2D":
     fig_smile, ax_smile = plt.subplots(figsize=(8,4))
-    if dark_mode:
-        fig_smile.patch.set_facecolor('#111111')
-        ax_smile.set_facecolor('#111111')
-        ax_smile.spines['bottom'].set_color('white')
-        ax_smile.spines['left'].set_color('white')
-        ax_smile.tick_params(axis='x', colors='white')
-        ax_smile.tick_params(axis='y', colors='white')
-        ax_smile.yaxis.label.set_color('white')
-        ax_smile.xaxis.label.set_color('white')
-        ax_smile.title.set_color('white')
-
     ax_smile.plot(strikes, sigma0 + 0.05 * ((strikes - S0)/S0)**2, color="#4A90E2")
     ax_smile.axvline(S0, color='grey', linestyle='--')
     ax_smile.set_xlabel("Strike")
@@ -202,7 +155,6 @@ if smile_view == "2D":
     ax_smile.set_title("Volatility Smile")
     ax_smile.grid(True)
     st.pyplot(fig_smile)
-
 else:
     fig_smile3d = plt.figure(figsize=(8,6))
     ax3d = fig_smile3d.add_subplot(111, projection='3d')
@@ -211,10 +163,8 @@ else:
     ax3d.set_ylabel('T')
     ax3d.set_zlabel('Volatilidad Implícita')
     ax3d.set_title('Volatility Smile 3D')
-    if dark_mode:
-        ax3d.set_facecolor('#111111')
-        fig_smile3d.patch.set_facecolor('#111111')
     st.pyplot(fig_smile3d)
 
 # --- FOOTER ---
 st.markdown("---")
+st.caption("Built with 💙 by Derivatives Specialist AI")
